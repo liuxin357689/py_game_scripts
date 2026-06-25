@@ -1,0 +1,82 @@
+# ============================================
+# Hero AFK - 项目配置文件
+# ============================================
+
+# 应用设置
+app:
+  name: "Hero AFK"
+  version: "0.1.0"
+  language: "zh-CN"
+
+# ADB 连接配置（覆盖平台默认值）
+adb:
+  host: "localhost"
+  port: 5037
+  auto_connect: true
+  timeout: 10
+
+# 日志配置
+logging:
+  level: "INFO"
+  file: "logs/hero-afk.log"
+  max_size: "10MB"
+  backup_count: 5
+  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+
+# Hero AFK 专属任务配置
+tasks:
+  # ---- 基础任务 ----
+  auto_close_notify:
+    enabled: true
+    schedule:
+      start: "08:00"
+      end: "23:00"
+    cooldown: 30          # 冷却时间（秒）
+    max_failures: 3       # 最大连续失败次数
+    retry_policy:
+      max_attempts: 3
+      backoff_seconds: 5
+      retry_on_error: true
+
+  auto_dark_realm:
+    enabled: false
+    schedule:
+      start: "10:00"
+      end: "22:00"
+    cooldown: 1800        # 30 分钟
+    max_failures: 3
+    retry_policy:
+      max_attempts: 3
+      backoff_seconds: 30
+      retry_on_error: true
+
+  auto_replace_equipment:
+    enabled: false
+    schedule:
+      start: "09:00"
+      end: "23:00"
+    cooldown: 3600        # 1 小时
+    max_failures: 2
+    retry_policy:
+      max_attempts: 2
+      backoff_seconds: 60
+      retry_on_error: true
+
+  auto_chaos_ranch:
+    enabled: false
+    schedule:
+      start: "10:00"
+      end: "22:00"
+    cooldown: 1800        # 30 分钟
+    max_failures: 3
+    retry_policy:
+      max_attempts: 3
+      backoff_seconds: 30
+      retry_on_error: true
+
+# GUI 配置
+gui:
+  theme: "light"
+  window_width: 1024
+  window_height: 768
+  minimize_to_tray: true

@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec.bak
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project specific
+config/devices.yaml
+config/user_*.yaml
+*.png
+!hero_afk/templates/*.png
+*.jpg
+!hero_afk/templates/*.jpg
+
+# Temporary files
+tmp/
+temp/
+*.tmp

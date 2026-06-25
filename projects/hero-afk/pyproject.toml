@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hero-afk"
+version = "0.1.0"
+description = "Hero AFK - 英雄挂机自动化脚本，基于 ADB + 像素颜色检测"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["game", "automation", "adb", "android", "afk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+]
+
+dependencies = [
+    "game-scripts-platform",
+    "PyQt6>=6.5.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "PyYAML>=6.0",
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pyinstaller>=6.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+hero-afk = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/USER/hero-afk"
+Repository = "https://github.com/USER/hero-afk"
+Issues = "https://github.com/USER/hero-afk/issues"
+Changelog = "https://github.com/USER/hero-afk/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["hero_afk*"]
+
+[tool.setuptools.package-data]
+hero_afk = ["templates/*.png", "templates/*.jpg"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
