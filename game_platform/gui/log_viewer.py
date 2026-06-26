@@ -96,7 +96,7 @@ class MultiDeviceLogViewer(QWidget):
         self._log_handlers: dict = {}  # device_address -> LogHandler
         self._device_tabs: dict = {}   # device_address -> QTextEdit
         self._current_device: str = None  # 当前选中的设备地址
-        self._min_level: int = logging.INFO  # 当前最小显示级别
+        self._min_level: int = logging.DEBUG  # 当前最小显示级别
         
         self._init_ui()
         

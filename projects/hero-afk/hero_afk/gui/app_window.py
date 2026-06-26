@@ -14,7 +14,9 @@ import sys
 from hero_afk._paths import setup_platform_path
 setup_platform_path()
 
-from PyQt6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+from typing import Optional
+
+from PyQt6.QtWidgets import QSplitter
 from PyQt6.QtCore import Qt
 from game_platform.gui.main_window import MainWindow
 from game_platform.gui.control_panel import ControlPanel
@@ -35,18 +37,17 @@ logger = logging.getLogger(__name__)
 
 
 class FrameTaskManagerAdapter:
-    """FrameTask 管理器适配器 — 桥接截图共享架构与 ControlPanel
+    """FrameTask 管理器适配器 — 单设备版本
 
-    管理多个 ScreenshotService 实例（每设备一个），
-    对外提供与 MultiDeviceTaskManager 相同的接口供 ControlPanel 调用。
+    管理一个 ScreenshotService 实例，对外提供统一的接口供 ControlPanel 调用。
     """
 
     def __init__(self):
-        # address -> ScreenshotService
-        self._services: dict[str, ScreenshotService] = {}
+        # 单个截图服务实例
+        self._service: Optional[ScreenshotService] = None
         # task_name -> factory() -> FrameTask
         self._task_factories: dict = {}
-        # task_name -> 期望的激活状态（跨设备重连时保持用户选择）
+        # task_name -> 期望的激活状态（重连时保持用户选择）
         self._desired_active: dict[str, bool] = {}
 
     # ---- 任务工厂注册 ----
@@ -62,35 +63,48 @@ class FrameTaskManagerAdapter:
         self._desired_active[name] = False
         logger.info(f"已注册任务工厂: {name}")
 
-    # ---- 设备管理 ----
+    # ---- 设备管理（单设备）----
 
-    def register_device(self, address: str):
-        """为设备创建 ScreenshotService，注册并激活所有任务"""
-        if address in self._services:
-            logger.warning(f"设备 {address} 已有截图服务，跳过")
-            return
+    def connect(self, address: str):
+        """连接设备并启动截图服务
 
-        service = ScreenshotService(device_address=address)
+        Args:
+            address: 设备地址，格式 "host:port"
+        """
+        if self._service is not None:
+            logger.warning(f"已有设备连接 [{self._address}]，先断开")
+            self.disconnect()
+
+        self._address = address
+        self._service = ScreenshotService(device_address=address)
 
         for task_name, factory in self._task_factories.items():
             task = factory()
-            service.register_task(task)
+            self._service.register_task(task)
             if self._desired_active.get(task_name, False):
                 task.activate()
 
-        service.start()
-        self._services[address] = service
+        self._service.start()
         logger.info(
-            f"为设备 {address} 创建截图服务，"
-            f"共 {len(self._task_factories)} 个任务"
+            f"已连接设备 {address}，共 {len(self._task_factories)} 个任务"
         )
 
-    def unregister_device(self, address: str):
-        """停止并移除设备的 ScreenshotService"""
-        service = self._services.pop(address, None)
-        if service:
-            service.stop()
-            logger.info(f"已停止设备 {address} 的截图服务")
+    def disconnect(self):
+        """停止截图服务并断开设备"""
+        if self._service:
+            self._service.stop()
+            self._service = None
+            logger.info("已断开设备连接")
+
+    @property
+    def is_connected(self) -> bool:
+        """设备是否已连接"""
+        return self._service is not None
+
+    @property
+    def device_address(self) -> Optional[str]:
+        """当前设备地址"""
+        return getattr(self, "_address", None)
 
     # ---- ControlPanel 兼容接口 ----
 
@@ -99,68 +113,53 @@ class FrameTaskManagerAdapter:
         return list(self._task_factories.keys())
 
     def get_task_status(self, task_name: str):
-        """获取任务在所有设备上的聚合状态"""
+        """获取任务状态"""
         if task_name not in self._task_factories:
             return None
 
-        if not self._services:
+        if self._service is None:
             if self._desired_active.get(task_name, False):
                 return TaskStatus.RUNNING
             return TaskStatus.IDLE
 
-        states = []
-        for service in self._services.values():
-            task = service.get_task(task_name)
-            if task:
-                states.append(
-                    TaskStatus.RUNNING if task.is_active else TaskStatus.IDLE
-                )
-
-        if not states:
-            return (
-                TaskStatus.RUNNING
-                if self._desired_active.get(task_name, False)
-                else TaskStatus.IDLE
-            )
-        if any(s == TaskStatus.RUNNING for s in states):
-            return TaskStatus.RUNNING
-        return TaskStatus.IDLE
+        task = self._service.get_task(task_name)
+        if task is None:
+            return TaskStatus.IDLE
+        return TaskStatus.RUNNING if task.is_active else TaskStatus.IDLE
 
     def start_task(self, task_name: str) -> bool:
-        """激活任务（所有设备）"""
+        """激活任务"""
         if task_name not in self._task_factories:
             return False
         self._desired_active[task_name] = True
-        for service in self._services.values():
-            service.activate_task(task_name)
+        if self._service:
+            self._service.activate_task(task_name)
         logger.info(f"已激活任务: {task_name}")
         return True
 
     def stop_task(self, task_name: str) -> bool:
-        """停用任务（所有设备）"""
+        """停用任务"""
         if task_name not in self._task_factories:
             return False
         self._desired_active[task_name] = False
-        for service in self._services.values():
-            service.deactivate_task(task_name)
+        if self._service:
+            self._service.deactivate_task(task_name)
         logger.info(f"已停用任务: {task_name}")
         return True
 
     def pause_task(self, task_name: str) -> bool:
-        """暂停任务（等价于停用，FrameTask 无独立暂停态）"""
+        """暂停任务（等价于停用）"""
         return self.stop_task(task_name)
 
     def resume_task(self, task_name: str) -> bool:
-        """恢复任务（等价于激活，FrameTask 无独立暂停态）"""
+        """恢复任务（等价于激活）"""
         return self.start_task(task_name)
 
     def stop_all(self):
-        """停止所有设备的所有服务和任务"""
+        """停止所有任务和设备连接"""
         for name in self._desired_active:
             self._desired_active[name] = False
-        for service in self._services.values():
-            service.stop()
-        self._services.clear()
+        self.disconnect()
         logger.info("已停止所有截图服务")
 
 
@@ -216,10 +215,6 @@ class HeroAfkWindow(MainWindow):
         from PyQt6.QtWidgets import QApplication
         QApplication.processEvents()
         sys.exit(0)
-
-    def _auto_connect_last_device(self):
-        """覆盖父类的单设备自动连接，改为多设备连接（在 __init__ 中用 QTimer 调用）"""
-        pass  # 由 _auto_connect_verified_devices 替代
 
     def _init_panels(self):
         """初始化 Hero AFK 专属面板"""
@@ -289,9 +284,6 @@ class HeroAfkWindow(MainWindow):
             lambda: AutoActivityReward(threshold=0.7),
         )
 
-        # 监听设备连接事件，为新连接的设备创建截图服务
-        self._device_manager.device_connected.connect(self._on_device_connected)
-
     def _create_toolbar(self):
         """创建工具栏"""
         toolbar = self.addToolBar("主工具栏")
@@ -307,7 +299,6 @@ class HeroAfkWindow(MainWindow):
         if self._test_mode_dialog is None:
             self._test_mode_dialog = TestModeDialog(
                 task_manager=self._task_manager,
-                device_manager=self._device_manager,
                 parent=self,
             )
             self._test_mode_dialog.closed.connect(self._on_test_mode_closed)
@@ -327,14 +318,13 @@ class HeroAfkWindow(MainWindow):
             logger.info("日志系统已启动")
 
     def _auto_connect_verified_devices(self):
-        """启动时自动连接所有已验证设备（多设备同时在线）
+        """启动时自动连接已验证设备（单设备版本，只连接第一个）
 
         流程:
             1. 从 DeviceConfigManager 读取已验证设备列表
-            2. 逐个尝试 ADB 连接
-            3. 连接成功：为该设备创建截图服务，设备状态保持为"已连接"
-            4. 连接失败：在全局日志中打印错误信息，跳过该设备继续连接下一个
-            5. 所有成功连接的设备均保持活跃状态，ADB 可同时控制多台模拟器
+            2. 取第一个设备尝试连接
+            3. 连接成功：创建截图服务
+            4. 连接失败：打印错误信息
         """
         if not self._device_manager or not self._log_viewer:
             return
@@ -347,66 +337,40 @@ class HeroAfkWindow(MainWindow):
             self._log_global_info("[系统] 无已验证设备，请先在【工具 → 设备管理】中扫描并验证设备")
             return
 
-        logger.info(f"发现 {len(verified)} 个已验证设备，开始自动连接...")
-        self._log_global_info(f"[系统] 发现 {len(verified)} 个已验证设备，开始自动连接...")
+        # 取第一个设备
+        address, info = next(iter(verified.items()))
+        host, port = address.rsplit(":", 1)
+        port = int(port)
+        device_name = info.name if info and info.name else address
 
-        success_count = 0
-        fail_count = 0
-        connected_addresses = []
+        # 预填充设备信息
+        if address not in self._device_manager._device_infos:
+            self._device_manager._device_infos[address] = EmulatorInfo(
+                host=host, port=port, status="online", name=device_name
+            )
 
-        for address, info in verified.items():
-            try:
-                # 解析 host:port
-                parts = address.rsplit(":", 1)
-                if len(parts) != 2:
-                    logger.warning(f"无效的设备地址格式: {address}")
-                    continue
+        try:
+            logger.info(f"正在连接 {device_name} [{address}]...")
+            device = self._device_manager.connect_device(host, port)
 
-                host, port = parts[0], int(parts[1])
-                device_name = info.name if info and info.name else address
-
-                # 预填充设备信息到 DeviceManager，确保 connect_device 不会创建空的 EmulatorInfo
-                if address not in self._device_manager._device_infos:
-                    self._device_manager._device_infos[address] = EmulatorInfo(
-                        host=host, port=port, status="online", name=device_name
-                    )
-
-                # 尝试连接
-                logger.info(f"正在连接 {device_name} [{address}]...")
-                device = self._device_manager.connect_device(host, port)
-
-                if device and device.is_connected():
-                    success_count += 1
-                    connected_addresses.append(address)
-                    # 显式为设备创建日志选项卡 + 截图服务
-                    self._on_device_connected(address)
-                    logger.info(f"✅ 成功连接 {device_name} [{address}]")
-                else:
-                    fail_count += 1
-                    error_msg = f"[系统] 无法连接到 {device_name} [{address}] - 设备未响应或 ADB 服务异常"
-                    self._log_global_error(error_msg)
-                    logger.warning(error_msg)
-
-            except Exception as e:
-                fail_count += 1
-                device_name = info.name if info else address
-                error_msg = f"[系统] 连接 {device_name} [{address}] 时发生异常: {str(e)}"
+            if device and device.is_connected():
+                # 创建日志选项卡
+                self._log_viewer.setup_logger_for_device(address, device_name, level=logging.DEBUG)
+                # 连接截图服务
+                self._task_manager.connect(address)
+                # 刷新控制面板
+                if self._control_panel:
+                    self._control_panel.refresh()
+                logger.info(f"已连接设备 {device_name} [{address}]")
+                self._log_global_info(f"[系统] 已连接 {device_name} [{address}]")
+            else:
+                error_msg = f"[系统] 无法连接 {device_name} [{address}] - 设备未响应"
+                logger.warning(error_msg)
                 self._log_global_error(error_msg)
-                logger.error(error_msg, exc_info=True)
 
-        # 汇总结果
-        if success_count > 0:
-            summary = f"[系统] 自动连接完成: {success_count} 成功, {fail_count} 失败"
-            logger.info(summary)
-            self._log_global_info(summary)
-            # 列出所有已连接设备
-            for addr in connected_addresses:
-                dev_info = self._device_manager.get_device_info(addr)
-                dev_name = dev_info.name if dev_info else addr
-                self._log_global_info(f"  ✅ {dev_name} [{addr}]")
-        elif fail_count > 0:
-            error_msg = f"[系统] 自动连接失败: 所有 {fail_count} 个已验证设备均无法连接"
-            logger.warning(error_msg)
+        except Exception as e:
+            error_msg = f"[系统] 连接 {device_name} [{address}] 时发生异常: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             self._log_global_error(error_msg)
 
     def _log_global_info(self, message: str):
@@ -442,68 +406,10 @@ class HeroAfkWindow(MainWindow):
             cursor.movePosition(cursor.MoveOperation.End)
             global_log.setTextCursor(cursor)
 
-    def _on_device_connected(self, address: str):
-        """设备连接回调
-
-        流程:
-            1. 为设备创建日志选项卡
-            2. 为设备创建 ScreenshotService 并注册所有任务
-            3. 刷新控制面板
-        """
-        if not self._log_viewer:
-            return
-
-        # 获取设备信息（优先从 DeviceManager 获取，其次从配置文件获取）
-        info = self._device_manager.get_device_info(address)
-        device_name = ""
-        if info and info.name:
-            device_name = info.name
-        else:
-            # 从配置中获取已验证设备的名称
-            verified_info = self._device_manager.config.get_verified_info(address)
-            if verified_info and verified_info.name:
-                device_name = verified_info.name
-        if not device_name:
-            device_name = address
-
-        # 为设备创建日志选项卡
-        self._log_viewer.setup_logger_for_device(address, device_name, level=logging.DEBUG)
-
-        # 为设备创建截图服务（内部会注册并启动所有任务）
-        self._task_manager.register_device(address)
-
-        # 刷新控制面板显示新注册的任务
-        if self._control_panel:
-            self._control_panel.refresh()
-
-        logger.info(f"已为设备 {device_name} [{address}] 创建日志选项卡和截图服务")
-
     def _on_device_tab_closed(self, address: str):
-        """设备选项卡关闭回调
-
-        流程:
-            1. 停止对应设备的截图服务
-            2. 断开 ADB 连接
-            3. 在全局日志中记录断开信息
-            4. 若所有设备已断开，确保所有服务已停止
-        """
-        # 停止截图服务 + 断开设备连接
-        if self._device_manager:
-            # 先停止截图服务（内部会 stop 所有任务 + 断开 ScreenshotService 的 ADB 连接）
-            self._task_manager.unregister_device(address)
-            # 断开 DeviceManager 的 ADB 连接
-            self._device_manager.disconnect_device(address)
-            self._log_global_info(f"[系统] 已断开设备连接: {address}")
-            logger.info(f"选项卡关闭，已停止截图服务并断开设备: {address}")
-
-        # 检查是否还有设备选项卡（排除全局选项卡）
-        if self._log_viewer:
-            remaining = [addr for addr in self._log_viewer._device_tabs if addr != "global"]
-            if not remaining:
-                # 最后一个设备选项卡已关闭，确保所有服务已停止
-                self._task_manager.stop_all()
-                self._log_global_info("[系统] 所有设备已断开，截图服务已停止")
-                logger.info("最后一个设备选项卡已关闭，所有截图服务已停止")
+        """设备选项卡关闭回调 — 断开设备"""
+        self._task_manager.disconnect()
+        self._log_global_info(f"[系统] 已断开设备: {address}")
 
     def closeEvent(self, event):
         """窗口关闭事件处理"""

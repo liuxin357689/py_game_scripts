@@ -1,8 +1,8 @@
 """
-测试模式对话框
+测试模式对话框（单设备版本）
 
 功能：
-    - 选择设备和任务进行手动测试
+    - 选择任务进行手动测试
     - 点击"手动截取画面"推送截图给选中的任务
     - 任务返回动作后在截图上标注并保存到 test_captures 目录
     - 支持连续多帧测试
@@ -13,16 +13,14 @@
 import logging
 import os
 from datetime import datetime
-from typing import Optional
 
 import cv2
 import numpy as np
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QComboBox, QGroupBox, QTextEdit,
-    QSplitter, QScrollArea,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +49,7 @@ def _cv2_to_qpixmap(img: np.ndarray) -> QPixmap:
 
 
 class TestModeDialog(QDialog):
-    """测试模式对话框"""
+    """测试模式对话框（单设备版本）"""
 
     # 对话框关闭信号
     closed = pyqtSignal()
@@ -59,21 +57,17 @@ class TestModeDialog(QDialog):
     def __init__(
         self,
         task_manager,
-        device_manager,
         parent=None,
     ):
         """
         Args:
-            task_manager: FrameTaskManagerAdapter 实例
-            device_manager: DeviceManager 实例
+            task_manager: FrameTaskManagerAdapter 实例（单设备）
             parent: 父窗口
         """
         super().__init__(parent)
         self._task_manager = task_manager
-        self._device_manager = device_manager
         self._current_task = None
         self._frame_count = 0
-        self._device_address = None
 
         # 确保保存目录存在
         _ensure_dir(_TEST_CAPTURES_ROOT)
@@ -87,18 +81,6 @@ class TestModeDialog(QDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # ---- 设备选择 ----
-        device_group = QGroupBox("设备选择")
-        device_layout = QHBoxLayout()
-        self._device_combo = QComboBox()
-        self._device_refresh_btn = QPushButton("刷新设备")
-        self._device_refresh_btn.clicked.connect(self._refresh_devices)
-        device_layout.addWidget(QLabel("设备:"))
-        device_layout.addWidget(self._device_combo, 1)
-        device_layout.addWidget(self._device_refresh_btn)
-        device_group.setLayout(device_layout)
-        layout.addWidget(device_group)
-
         # ---- 任务选择 ----
         task_group = QGroupBox("任务选择")
         task_layout = QHBoxLayout()
@@ -108,6 +90,11 @@ class TestModeDialog(QDialog):
         task_layout.addWidget(self._task_combo, 1)
         task_group.setLayout(task_layout)
         layout.addWidget(task_group)
+
+        # ---- 连接状态 ----
+        self._status_label = QLabel("未连接设备")
+        self._status_label.setStyleSheet("color: #888; font-size: 12px;")
+        layout.addWidget(self._status_label)
 
         # ---- 截图预览 ----
         preview_group = QGroupBox("截图预览")
@@ -141,7 +128,6 @@ class TestModeDialog(QDialog):
         self._capture_btn = QPushButton("手动截取画面")
         self._capture_btn.setMinimumHeight(40)
         self._capture_btn.clicked.connect(self._on_capture)
-        self._capture_btn.setEnabled(False)  # 未选择设备时禁用
 
         self._activate_btn = QPushButton("激活任务")
         self._activate_btn.clicked.connect(self._on_toggle_activation)
@@ -154,8 +140,8 @@ class TestModeDialog(QDialog):
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
-        # 初始刷新设备列表
-        self._refresh_devices()
+        # 初始刷新
+        self._refresh_status()
         self._refresh_tasks()
 
     def closeEvent(self, event):
@@ -163,21 +149,22 @@ class TestModeDialog(QDialog):
         self.closed.emit()
         super().closeEvent(event)
 
-    def _refresh_devices(self):
-        """刷新设备列表"""
-        self._device_combo.clear()
-        services = self._task_manager._services
-        if services:
-            for addr in services.keys():
-                self._device_combo.addItem(addr, addr)
+    def showEvent(self, event):
+        """对话框显示时刷新状态"""
+        super().showEvent(event)
+        self._refresh_status()
+
+    def _refresh_status(self):
+        """刷新连接状态"""
+        if self._task_manager.is_connected:
+            addr = self._task_manager.device_address or "未知"
+            self._status_label.setText(f"已连接: {addr}")
+            self._status_label.setStyleSheet("color: #4ec9b0; font-size: 12px;")
+            self._capture_btn.setEnabled(True)
         else:
-            self._device_combo.addItem("（无已连接设备）", None)
-        self._device_combo.setEnabled(
-            self._device_combo.currentData() is not None
-        )
-        self._capture_btn.setEnabled(
-            self._device_combo.currentData() is not None
-        )
+            self._status_label.setText("未连接设备")
+            self._status_label.setStyleSheet("color: #888; font-size: 12px;")
+            self._capture_btn.setEnabled(False)
 
     def _refresh_tasks(self):
         """刷新任务列表"""
@@ -235,11 +222,8 @@ class TestModeDialog(QDialog):
         self._activate_btn.setText("停用任务" if task.is_active else "激活任务")
 
     def _get_current_service(self):
-        """获取当前选中的截图服务"""
-        addr = self._device_combo.currentData()
-        if not addr:
-            return None
-        return self._task_manager._services.get(addr)
+        """获取截图服务（单设备）"""
+        return self._task_manager._service
 
     def _log(self, msg: str):
         """添加日志"""

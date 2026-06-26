@@ -83,7 +83,7 @@ class AutoDarkRealm(FrameTask):
 
     # 星星位置确认：连续2帧位置一致（±tolerance）才点击
     _STAR_POS_TOLERANCE = 10
-    _STAR_CONFIRM_FRAMES = 2
+    _STAR_CONFIRM_FRAMES = 3
 
     def __init__(
         self,
