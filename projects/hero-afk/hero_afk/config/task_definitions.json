@@ -1,0 +1,50 @@
+{
+    "auto_close_notify": {
+        "name": "自动完成任务",
+        "priority": 10,
+        "cooldown": 30,
+        "max_failures": 3,
+        "dependencies": [],
+        "retry_policy": {
+            "max_attempts": 3,
+            "backoff_seconds": 5,
+            "retry_on_error": true
+        }
+    },
+    "auto_dark_realm": {
+        "name": "暗能秘境",
+        "priority": 20,
+        "cooldown": 1800,
+        "max_failures": 3,
+        "dependencies": [],
+        "retry_policy": {
+            "max_attempts": 3,
+            "backoff_seconds": 30,
+            "retry_on_error": true
+        }
+    },
+    "auto_replace_equipment": {
+        "name": "自动替换装备",
+        "priority": 30,
+        "cooldown": 3600,
+        "max_failures": 2,
+        "dependencies": [],
+        "retry_policy": {
+            "max_attempts": 2,
+            "backoff_seconds": 60,
+            "retry_on_error": true
+        }
+    },
+    "auto_chaos_ranch": {
+        "name": "混沌牧场",
+        "priority": 40,
+        "cooldown": 1800,
+        "max_failures": 3,
+        "dependencies": [],
+        "retry_policy": {
+            "max_attempts": 3,
+            "backoff_seconds": 30,
+            "retry_on_error": true
+        }
+    }
+}

@@ -1,0 +1,40 @@
+# ============================================
+# Game Scripts - Global Python Dependencies
+# ============================================
+# Note: This file contains dependencies for all modules
+# Docker development environment uses this file to install all dependencies
+# Each project's pyproject.toml only declares dependency on the platform
+# ============================================
+
+# --- Platform Core Dependencies ---
+
+# GUI Framework
+PyQt6>=6.4.0
+PyQt6-Qt6>=6.4.0
+PyQt6-sip>=13.4.0
+
+# ADB Control
+adb-shell==0.4.4
+
+# Image Processing
+opencv-python==4.9.0.80
+numpy==1.24.3
+Pillow==10.0.0
+
+# Configuration and Tools
+PyYAML==6.0.1
+schedule==1.2.0
+watchdog==3.0.0
+
+# Web Interface (Optional)
+flask==3.0.0
+flask-cors==4.0.0
+
+# --- Development Tools ---
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+pylint>=3.0.0
+
+# --- Packaging Tools ---
+pyinstaller>=6.0.0
